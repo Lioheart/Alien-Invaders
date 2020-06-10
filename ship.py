@@ -1,8 +1,9 @@
 """Zarządzanie całym zachowaniem statku kosmicznego."""
 import pygame
+from pygame.sprite import Sprite
 
 
-class Ship:
+class Ship(Sprite):
     """
     Odpowiada za właściwości statku kosmicznego.
     """
@@ -12,6 +13,7 @@ class Ship:
         :param screen: Ekran
         :param ai_settings: Ustawienia gry
         """
+        super(Ship, self).__init__()
         self.screen = screen
         self.ai_set = ai_settings
 

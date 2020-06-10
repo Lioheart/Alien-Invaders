@@ -21,8 +21,10 @@ def fire_bullet(ai_settings, screen, ship, bullets):
         bullets.add(new_bullet)
 
 
-def check_bullet_alien_collisions(ai_settings, screen, ship, aliens, bullets):
+def check_bullet_alien_collisions(ai_settings, screen, stats, sb, ship, aliens, bullets):
     """Reakcja na kolizję między pociskiem i obcym
+    :param stats: Statystyki
+    :param sb: Tablica wyników
     :param ai_settings: Ustawienia
     :param screen: Ekran
     :param ship: Statek
@@ -32,14 +34,39 @@ def check_bullet_alien_collisions(ai_settings, screen, ship, aliens, bullets):
     # Usunięcie wszystkich pocisków i obcych, między którymi doszło do kolizji
     collisions = pygame.sprite.groupcollide(bullets, aliens, True, True)
 
+    if collisions:
+        for alien in collisions.values():
+            stats.score += ai_settings.alien_points * len(alien)
+            sb.prep_score()
+        check_high_score(stats, sb)
+
     if len(aliens) == 0:
-        # Pozbycie się istniejących pocisków i utworzenie nowej floty
+        # Pozbycie się istniejących pocisków, przyspieszenie gry i utworzenie nowej floty
         bullets.empty()
-        create_fleet(ai_settings, screen, aliens, ship)
+        ai_settings.increase_speed()
+
+        # Inkrementacja numeru poziomu
+        stats.level += 1
+        sb.prep_level()
+
+        create_fleet(ai_settings, screen, ship, aliens)
 
 
-def update_bullets(bullets, aliens, ai_settings, screen, ship):
+def check_high_score(stats, sb):
+    """
+    Sprawdzenie, czy mamy nowy najlepszy wynik osiągnięty dotąd w grze.
+    :param stats: Statystyki
+    :param sb: Tablica wyników
+    """
+    if stats.score > stats.high_score:
+        stats.high_score = stats.score
+        sb.prep_high_score()
+
+
+def update_bullets(bullets, aliens, ai_settings, screen, ship, stats, sb):
     """Uaktualnienie położenia pocisków i usunięcie tych niewidocznych na ekranie.
+    :param stats: Statystyki
+    :param sb: Tablica wyników
     :param ai_settings: Ustawienia
     :param screen: Ekran
     :param ship: Statek
@@ -53,7 +80,7 @@ def update_bullets(bullets, aliens, ai_settings, screen, ship):
         if bullet.rect.bottom <= 0:
             bullets.remove(bullet)
 
-    check_bullet_alien_collisions(ai_settings, screen, ship, aliens, bullets)
+    check_bullet_alien_collisions(ai_settings, screen, stats, sb, ship, aliens, bullets)
 
 
 def check_keydown_events(event, ship, ai_settings, screen, bullets):
@@ -88,9 +115,54 @@ def check_keyup_events(event, ship):
         ship.moving_left = False
 
 
-def check_events(ship, ai_settings, screen, bullets):
+def check_play_button(ai_settings, screen, stats, sb, play_button, ship, aliens, bullets, mouse_x, mouse_y):
+    """
+    Rozpoczęcie nowej gry po kliknięciu przycisku Uruchom grę przez użytkownika.
+    :param sb: Tablica wyników
+    :param ai_settings: Ustawienia
+    :param screen: Ekran
+    :param ship: Statek
+    :param aliens: Flota obcych (grupa)
+    :param bullets: Pociski (grupa)
+    :param stats: Statystyki
+    :param play_button: Przycisk Uruchom grę
+    :param mouse_x: Pozycja kursora w osi X
+    :param mouse_y: Pozycja kursora w osi Y
+    """
+    button_clicked = play_button.rect.collidepoint(mouse_x, mouse_y)
+    if button_clicked and not stats.game_active:
+        # Wyzerowanie ustawień dotyczących gry
+        ai_settings.initialize_dynamic_settings()
+
+        # Ukrycie kursora myszy
+        pygame.mouse.set_visible(False)
+
+        # Wyzerowanie danych statystycznych
+        stats.reset_stats()
+        stats.game_active = True
+
+        # Wyzerowanie obrazów tablicy wyników
+        sb.prep_score()
+        sb.prep_high_score()
+        sb.prep_level()
+        sb.prep_ship()
+
+        # Usunięcie zawartości list aliens i bullets
+        aliens.empty()
+        bullets.empty()
+
+        # Utworzenie nowej floty i wysrodkowanie statku
+        create_fleet(ai_settings, screen, ship, aliens)
+        ship.center_ship()
+
+
+def check_events(ai_settings, screen, stats, sb, play_button, ship, aliens, bullets):
     """
     Reakcja na zdarzenia generowane przez klawiaturę i mysz.
+    :param sb: Tablica wyników
+    :param aliens: Flota obcych (grupa)
+    :param stats: Statystyki
+    :param play_button: Przycisk Uruchom grę
     :param ai_settings: Ustawienia
     :param screen: Ekran
     :param bullets: Pociski (grupa)
@@ -106,16 +178,24 @@ def check_events(ship, ai_settings, screen, bullets):
         elif event.type == pygame.KEYUP:
             check_keyup_events(event, ship)
 
+        elif event.type == pygame.MOUSEBUTTONDOWN:
+            mouse_x, mouse_y = pygame.mouse.get_pos()
+            check_play_button(ai_settings, screen, stats, sb, play_button, ship, aliens, bullets, mouse_x, mouse_y)
 
-def update_screen(ai_settings, screen, ship, bullets, aliens):
+
+def update_screen(ai_settings, screen, ship, bullets, aliens, play_button, stats, sb):
     """
     Uaktualnienie obrazów na ekranie i przejście do nowego ekranu.
+    :param sb: Tablica wyników
+    :param stats: Statystyki
+    :param play_button: Przycisk Uruchom grę
     :param aliens: Statki obcych (grupa
     :param bullets: Pociski (grupa)
     :param ai_settings: Ustawienia gry
     :param screen: Ekran
     :param ship: Statek
     """
+
     # Odświeżanie ekranu w trakcjie każdej iteracji pętli
     screen.fill(ai_settings.bg_color)
 
@@ -125,6 +205,13 @@ def update_screen(ai_settings, screen, ship, bullets, aliens):
 
     ship.blitme()
     aliens.draw(screen)
+
+    # Wyświetlenie informacji o punktacji
+    sb.show_score()
+
+    # Wyświetlenie przycisku tylko wtedy, gdy gra jest nieaktywna
+    if not stats.game_active:
+        play_button.draw_button()
 
     # Wyświetlanie ostatnio zmodyfikowanego ekranu
     pygame.display.flip()
@@ -167,11 +254,11 @@ def create_alien(ai_settings, screen, aliens, alien_number, row_number):
     # Utworzenie obcego i umieszczenie go w rzędzie
     alien.x = alien_width + 2 * alien_width * alien_number
     alien.rect.x = alien.x
-    alien.rect.y = alien.rect.height + 2 * alien.rect.height * row_number
+    alien.rect.y = alien.rect.height + 2 * alien.rect.height * row_number + 5
     aliens.add(alien)
 
 
-def create_fleet(ai_settings, screen, aliens, ship):
+def create_fleet(ai_settings, screen, ship, aliens):
     """Utworzenie pełnej floty obcych.
     :param ai_settings: Ustawienia
     :param screen: Ekran
@@ -190,9 +277,10 @@ def create_fleet(ai_settings, screen, aliens, ship):
             create_alien(ai_settings, screen, aliens, alien_number, row_number)
 
 
-def check_aliens_bottom(ai_settings, stats, screen, ship, aliens, bullets):
+def check_aliens_bottom(ai_settings, stats, screen, ship, aliens, bullets, sb):
     """
     Sprawdzenie, czy którykolwiek obcy dotarł do dolnej krawędzi ekranu.
+    :param sb: Tablica wyników
     :param ai_settings: Ustawienia
     :param stats: Statystyki
     :param screen: Ekran
@@ -203,13 +291,14 @@ def check_aliens_bottom(ai_settings, stats, screen, ship, aliens, bullets):
     screen_rect = screen.get_rect()
     for alien in aliens.sprites():
         if alien.rect.bottom >= screen_rect.bottom:
-            ship_hit(ai_settings, stats, screen, ship, aliens, bullets)
+            ship_hit(ai_settings, stats, screen, ship, aliens, bullets, sb)
             break
 
 
-def update_aliens(ai_settings, aliens, ship, stats, screen, bullets):
+def update_aliens(ai_settings, aliens, ship, stats, screen, bullets, sb):
     """Sprawdzenie, czy flota znajduje się przy krawędzi ekranu, a następnie uaktualnienie położenia wszystkich
     obcych we flocie.
+    :param sb: Tablica wyników
     :param stats: Statystyki
     :param screen: Ekran
     :param bullets: Pociski (grupa)
@@ -221,14 +310,15 @@ def update_aliens(ai_settings, aliens, ship, stats, screen, bullets):
 
     # Wykrywanie kolizji między obcym i statkiem.
     if pygame.sprite.spritecollideany(ship, aliens):
-        ship_hit(ai_settings, stats, screen, ship, aliens, bullets)
+        ship_hit(ai_settings, stats, screen, ship, aliens, bullets, sb)
 
     # Wyszukiwanie obcych docierających do dolnej krawędzi ekranu
-    check_aliens_bottom(ai_settings, stats, screen, ship, aliens, bullets)
+    check_aliens_bottom(ai_settings, stats, screen, ship, aliens, bullets, sb)
 
 
-def ship_hit(ai_settings, stats, screen, ship, aliens, bullets):
+def ship_hit(ai_settings, stats, screen, ship, aliens, bullets, sb):
     """Reakcja na uderzenie obcego w statek.
+    :param sb: Tablica wyników
     :param ai_settings: Ustawienia
     :param stats: Statystyki
     :param screen: Ekran
@@ -236,21 +326,25 @@ def ship_hit(ai_settings, stats, screen, ship, aliens, bullets):
     :param aliens: Flota obcych (grupa)
     :param bullets: Pociski (grupa)
     """
-    if stats.ships_left > 0:
+    if stats.ships_left > 1:
         stats.ships_left -= 1
+
+        # Uaktualnienie tablicy wyników
+        sb.prep_ship()
 
         # Usunięcie zawartości list aliens i bullets
         aliens.empty()
         bullets.empty()
 
         # Utworzenie nowej floty i wyśrodkowanie statku
-        create_fleet(ai_settings, screen, aliens, ship)
+        create_fleet(ai_settings, screen, ship, aliens)
         ship.center_ship()
 
         # Pauza
         sleep(0.5)
     else:
         stats.game_active = False
+        pygame.mouse.set_visible(True)
 
 
 def change_fleet_direction(ai_settings, aliens):
