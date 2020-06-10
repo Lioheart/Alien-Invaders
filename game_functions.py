@@ -1,8 +1,10 @@
 """Funkcje gry"""
 import sys
+from time import sleep
 
 import pygame
 
+from alien import Alien
 from bullet import Bullet
 
 
@@ -19,8 +21,29 @@ def fire_bullet(ai_settings, screen, ship, bullets):
         bullets.add(new_bullet)
 
 
-def update_bullets(bullets):
+def check_bullet_alien_collisions(ai_settings, screen, ship, aliens, bullets):
+    """Reakcja na kolizję między pociskiem i obcym
+    :param ai_settings: Ustawienia
+    :param screen: Ekran
+    :param ship: Statek
+    :param aliens: Flota obcych (grupa)
+    :param bullets: Pociski (grupa)
+    """
+    # Usunięcie wszystkich pocisków i obcych, między którymi doszło do kolizji
+    collisions = pygame.sprite.groupcollide(bullets, aliens, True, True)
+
+    if len(aliens) == 0:
+        # Pozbycie się istniejących pocisków i utworzenie nowej floty
+        bullets.empty()
+        create_fleet(ai_settings, screen, aliens, ship)
+
+
+def update_bullets(bullets, aliens, ai_settings, screen, ship):
     """Uaktualnienie położenia pocisków i usunięcie tych niewidocznych na ekranie.
+    :param ai_settings: Ustawienia
+    :param screen: Ekran
+    :param ship: Statek
+    :param aliens: Flota obcych (grupa)
     :param bullets: Pociski (grupa)
     """
     bullets.update()  # Uaktualnienie położenia pocisków
@@ -29,6 +52,8 @@ def update_bullets(bullets):
     for bullet in bullets.copy():
         if bullet.rect.bottom <= 0:
             bullets.remove(bullet)
+
+    check_bullet_alien_collisions(ai_settings, screen, ship, aliens, bullets)
 
 
 def check_keydown_events(event, ship, ai_settings, screen, bullets):
@@ -47,6 +72,8 @@ def check_keydown_events(event, ship, ai_settings, screen, bullets):
         ship.moving_left = True
     elif event.key == pygame.K_SPACE:
         fire_bullet(ai_settings, screen, ship, bullets)
+    elif event.key == pygame.K_q:
+        sys.exit()
 
 
 def check_keyup_events(event, ship):
@@ -80,9 +107,10 @@ def check_events(ship, ai_settings, screen, bullets):
             check_keyup_events(event, ship)
 
 
-def update_screen(ai_settings, screen, ship, bullets):
+def update_screen(ai_settings, screen, ship, bullets, aliens):
     """
     Uaktualnienie obrazów na ekranie i przejście do nowego ekranu.
+    :param aliens: Statki obcych (grupa
     :param bullets: Pociski (grupa)
     :param ai_settings: Ustawienia gry
     :param screen: Ekran
@@ -96,6 +124,151 @@ def update_screen(ai_settings, screen, ship, bullets):
         bullet.draw_bullet()
 
     ship.blitme()
+    aliens.draw(screen)
 
     # Wyświetlanie ostatnio zmodyfikowanego ekranu
     pygame.display.flip()
+
+
+def get_number_aliens_x(ai_settings, alien_width):
+    """Ustalenie liczby obcych, którzy zmieszczą się w rzędzie.
+    :param ai_settings: Ustawienia
+    :param alien_width: Szerokość statku obcego
+    :return: Ilość obcych w rzędzie - int
+    """
+    available_space_x = ai_settings.screen_width - 2 * alien_width  # Ilość miejsca w poziomie
+    number_aliens_x = int(available_space_x / (2 * alien_width))  # Ile obcych zmieści się w rzędzie
+    return number_aliens_x
+
+
+def get_number_rows(ai_settings, ship_height, alien_height):
+    """Ustalenie, ile rzędów obcych zmieści się na ekranie.
+    :param ai_settings: Ustawienia
+    :param ship_height: Wysokość statku
+    :param alien_height: Wysokość statku obcego
+    :return: Ilość rzędów statków obcych - int
+    """
+    available_space_y = (ai_settings.screen_height - (7 * alien_height) - ship_height)
+    number_rows = int(available_space_y / (2 * alien_height))
+    return number_rows
+
+
+def create_alien(ai_settings, screen, aliens, alien_number, row_number):
+    """Utworzenie obcego i umieszczenie go w rzędzie
+    :param ai_settings: Ustawienia
+    :param screen: Ekran
+    :param aliens: Flota obcych (grupa)
+    :param alien_number: numer kolumny
+    :param row_number: numer wiersza
+    """
+    alien = Alien(ai_settings, screen)
+    alien_width = alien.rect.width  # Szerokość obcego
+
+    # Utworzenie obcego i umieszczenie go w rzędzie
+    alien.x = alien_width + 2 * alien_width * alien_number
+    alien.rect.x = alien.x
+    alien.rect.y = alien.rect.height + 2 * alien.rect.height * row_number
+    aliens.add(alien)
+
+
+def create_fleet(ai_settings, screen, aliens, ship):
+    """Utworzenie pełnej floty obcych.
+    :param ai_settings: Ustawienia
+    :param screen: Ekran
+    :param aliens: Flota obcych (grupa)
+    :param ship: Statek
+    """
+    # Utworzenie obcego i ustalenie liczby obcych, którzy zmieszczą się w rzędzie
+    # Odległość między poszczególnymi obcymi jest równa szerokości obcego
+    alien = Alien(ai_settings, screen)  # Nie jest częścią floty - bierzemy wymiary
+    number_aliens_x = get_number_aliens_x(ai_settings, alien.rect.width)
+    number_rows = get_number_rows(ai_settings, ship.rect.height, alien.rect.height)
+
+    # Utworzenie pierwszego rzędu obcych
+    for row_number in range(number_rows):
+        for alien_number in range(number_aliens_x):
+            create_alien(ai_settings, screen, aliens, alien_number, row_number)
+
+
+def check_aliens_bottom(ai_settings, stats, screen, ship, aliens, bullets):
+    """
+    Sprawdzenie, czy którykolwiek obcy dotarł do dolnej krawędzi ekranu.
+    :param ai_settings: Ustawienia
+    :param stats: Statystyki
+    :param screen: Ekran
+    :param ship: Statek
+    :param aliens: Flota obcych (grupa)
+    :param bullets: Pociski (grupa)
+    """
+    screen_rect = screen.get_rect()
+    for alien in aliens.sprites():
+        if alien.rect.bottom >= screen_rect.bottom:
+            ship_hit(ai_settings, stats, screen, ship, aliens, bullets)
+            break
+
+
+def update_aliens(ai_settings, aliens, ship, stats, screen, bullets):
+    """Sprawdzenie, czy flota znajduje się przy krawędzi ekranu, a następnie uaktualnienie położenia wszystkich
+    obcych we flocie.
+    :param stats: Statystyki
+    :param screen: Ekran
+    :param bullets: Pociski (grupa)
+    :param ship: Statek
+    :param ai_settings: Ustawienia
+    :param aliens: Flota obcych (grupa)"""
+    check_fleet_edges(ai_settings, aliens)
+    aliens.update()
+
+    # Wykrywanie kolizji między obcym i statkiem.
+    if pygame.sprite.spritecollideany(ship, aliens):
+        ship_hit(ai_settings, stats, screen, ship, aliens, bullets)
+
+    # Wyszukiwanie obcych docierających do dolnej krawędzi ekranu
+    check_aliens_bottom(ai_settings, stats, screen, ship, aliens, bullets)
+
+
+def ship_hit(ai_settings, stats, screen, ship, aliens, bullets):
+    """Reakcja na uderzenie obcego w statek.
+    :param ai_settings: Ustawienia
+    :param stats: Statystyki
+    :param screen: Ekran
+    :param ship: Statek
+    :param aliens: Flota obcych (grupa)
+    :param bullets: Pociski (grupa)
+    """
+    if stats.ships_left > 0:
+        stats.ships_left -= 1
+
+        # Usunięcie zawartości list aliens i bullets
+        aliens.empty()
+        bullets.empty()
+
+        # Utworzenie nowej floty i wyśrodkowanie statku
+        create_fleet(ai_settings, screen, aliens, ship)
+        ship.center_ship()
+
+        # Pauza
+        sleep(0.5)
+    else:
+        stats.game_active = False
+
+
+def change_fleet_direction(ai_settings, aliens):
+    """Przesunięcie całej floty w dół i zmiana kierunku, w którym się ona porusza.
+    :param ai_settings: Ustawienia
+    :param aliens: Flota obcych (grupa)
+    """
+    for alien in aliens.sprites():
+        alien.rect.y += ai_settings.fleet_drop_speed
+    ai_settings.fleet_direction *= -1
+
+
+def check_fleet_edges(ai_settings, aliens):
+    """Odpowiednia reakcja, gdy obcy dotrze do krawędzi ekranu.
+    :param ai_settings: Ustawienia
+    :param aliens: Flota obcych (grupa)
+    """
+    for alien in aliens.sprites():
+        if alien.check_edges():
+            change_fleet_direction(ai_settings, aliens)
+            break
